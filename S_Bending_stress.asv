@@ -1,0 +1,148 @@
+
+function Bending_stress_edge = S_Bending_stress(chordDis, Beta, r ,rho, Vr, phi, Cldes) 
+
+    % Bending_stress finds the Bending stress dist of the wind turbine due
+    % to aerodynamic forces
+    %
+    % Input arguments:
+    %   chordDis: the blades chord distribution
+    %   r: Contains the radial distances of the blade sections corresponding to the chord dist in chord_dist.
+    %   rho: Density
+    %   CLdes: CL_des
+    %   Vr: is the inlet velocity in the rotating (blade) frame of reference. [Lubbock Aero page 19 eq 18]
+    %   phi: is the relative inflow angle with respect to the tangential direction.
+    %
+    % Output:
+    %   Bending_stress_edge: Distribution of the stress along the blade at the critical point.
+    
+    % Define Constants: 
+    B = 2; % number of blades
+    
+    % Find aerodynamic force:
+    p_y = B * 0.5 .* (Vr.^2) .* Cldes .* chordDis .* sind(phi) * rho;
+    p_z = B * 0.5 .* (Vr.^2) .* Cldes .* chordDis .* cosd(phi) * rho;
+    
+    figure
+    plot(r,p_z,'r')
+    hold on
+    plot(r,p_y,'g')
+    hold off
+    title('aerodynamic forces')
+    legend('P_Z','P_y')
+
+    % Find the shear force
+    % T_z = integral( p_y(x)) between x to r using the trapezium rule
+    % T_y = integral( p_y(x)) between x to r using the trapezium rule
+    
+    delta_x = r(2) - r(1); % x difference between each trapezium
+    
+    T_z = zeros(1, length(r)); % Initialize T_z with zeros    
+    for n = 1:length(r)
+        y = p_z(n:length(r));
+        x = linspace(r(n),r(length(r)),length(y));
+        if length(y) >1
+            T_z(n) = trapz(x, y);
+        else
+            T_z(n) = 0;
+        end
+    end
+
+    T_y = zeros(1, length(r)); % Initialize T_y with zeros
+    for n = 1:length(r)
+        y = p_y(n:length(r));
+        x = linspace(r(n),r(length(r)),length(y));
+        if length(y) >1
+            T_y(n) = trapz(x, y);
+        else
+            T_y(n) = 0;
+        end
+    end
+
+    figure
+    plot(r,T_y,r,T_z)
+    title('Aerodynamic shear force')
+    legend('T_Y','T_Z')
+
+    % Find the Bending moments
+    % M_y = - integral( T_z(x)) between x to R using the trapezium rule
+    % M_z = + integral( T_y(x)) between x to R using the trapezium rule
+    
+    M_y = zeros(1,length(r));
+
+    for n = 1:length(r)
+        y = T_z(n:length(r));
+        x = linspace(r(n),r(length(r)),length(y));
+        if length(y) > 1
+            M_y(n) = trapz(x, y);
+        else
+            M_y(n) = 0;
+        end
+    end
+    M_y = -M_y;
+
+    M_z = zeros(1, length(r));
+    for n = 1:length(r)
+        y = T_y(n:length(r));
+        x = linspace(r(n),r(length(r)),length(y));
+        if length(y) > 1
+            M_z(n) = trapz(x, y);
+        else
+            M_z(n) = 0;
+        end
+    end
+    
+    figure
+    plot(r,M_y,'g')
+    hold on
+    plot(r,M_z,'r')
+    title('Aerodynamic bending moment')
+    hold off
+    legend('M_Y','M_Z')
+
+    % Find Iz, Iy, Izy {see onenote for axis definition}
+    % Idealise Aerofoil as ellipse A = chord length / 2, B = max
+    % thickness/2
+    % 
+    % thickness(0.17* chord length)
+
+    % Iz
+    Iz = [];
+    for i = 1:max(size(r))
+        B = 0.17*0.5*chordDis(i);
+        A = chordDis(i)/2;
+        Iz(i) = (B * A^3) * (pi/4) ;
+    end
+
+    % Iy
+    Iy = [];
+    for i = 1:max(size(r))
+        B = chordDis(i)/2;
+        A = 0.17 * 0.5 * chordDis(i);
+        Iy(i) = (B * A^3) * (pi/4);
+    end
+
+    % Izy
+    Izy = 0;
+
+    % find angle theta for the principle axes
+    two_theta = atan(0);
+    theta = two_theta/2;
+
+%     % include twist into the moments of inertia:
+%     theta = theta + deg2rad(Beta);
+%     two_theta = theta *2;
+    
+    I1 = (Iy+Iz)/2 - ((Iy-Iz)/2).* cos(two_theta); % moments of inertia in the principle axes
+    I2 = (Iy+Iz)/2 + ((Iy-Iz)/2).* cos(two_theta); 
+
+    % converting Moments into the principle axes
+    M1 = M_y.*cos(two_theta/2) - M_z.* 10 .*sin(two_theta/2); % M1 = My because cos0 = 1 sin0 = 0
+    M2 = M_y.* sin(two_theta/3) + M_z.* 10 .* cos(two_theta/2); % M2 = mz by the same logic as above
+
+    % Bending stress distribution at the critical region (leftmost point of ellipse since the semi major axis is the largest point)
+    y_val_edge = -chordDis/2;
+    z_val_edge = 0;
+    
+    Bending_stress_edge = ((M1 ./ I1) .* z_val_edge) - ((M2 ./ (I2)) .* y_val_edge);
+     
+end
